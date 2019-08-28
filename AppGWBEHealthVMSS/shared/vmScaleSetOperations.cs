@@ -24,6 +24,111 @@ namespace AppGWBEHealthVMSS.shared
         private static Dictionary<string, DateTime> RecentPendingVMDeleteOperations = new Dictionary<string, DateTime>(StringComparer.OrdinalIgnoreCase);
 
         /// <summary>
+        /// The ids of vms we have tried to delete recently
+        /// </summary>
+        private static Dictionary<string, DateTime> RecentPendingVMReimageOperations = new Dictionary<string, DateTime>(StringComparer.OrdinalIgnoreCase);
+
+        /// <summary>
+        /// Removes VMSS instances based on the ip addresses reported by backend
+        /// IP Address.
+        /// </summary>
+        /// <returns>completion task.</returns>
+        /// <param name="scaleSet">Scale set.</param>
+        /// <param name="serverIPs">Server IPs</param>
+        /// <param name="log">Log.</param>
+        public static bool ReplaceVMSSInstancesByIP(IVirtualMachineScaleSet scaleSet, IVirtualMachineScaleSets allScaleSets, List<string> serverIPs, ILogger log)
+        {
+            try
+            {
+                // first a bit of cleanup, remove all super old pending delete info to prevent leakage
+                foreach (var k in RecentPendingVMDeleteOperations.Keys.ToList())
+                {
+                    if (RecentPendingVMDeleteOperations[k] < DateTime.UtcNow - TimeSpan.FromMinutes(20))
+                    {
+                        log.LogInformation($"Cleaning up old pending delete info for vm {k}");
+                    }
+                }
+                log.LogInformation("Enumerating VM Instances in ScaleSet");
+                var vms = scaleSet.VirtualMachines.List().ToList();
+                // only consider nodes which have been prtovisioned completely for removal
+                var virtualmachines = vms.Where(x => x.Inner.ProvisioningState == "Succeeded").ToList();
+
+                log.LogInformation($"{virtualmachines.Count} machines of {vms.Count} are completely provisioned, checking those for App Payload Failed nodes");
+
+                List<string> badInstances = new List<string>();
+
+                foreach (var vm in virtualmachines)
+                {
+                    try
+                    {
+                        if (serverIPs.Contains(vm.ListNetworkInterfaces().First().Inner.IpConfigurations.First().PrivateIPAddress))
+                        {
+                            log.LogInformation("App Payload Failed detected: {0}", vm.InstanceId);
+                            badInstances.Add(vm.InstanceId);
+                        }
+                    }
+                    catch (Exception)
+                    {
+                        log.LogError($"Error reading ip config by VM ID {vm.Id}");
+                    }
+                }
+
+                if (badInstances.Count() != 0)
+                {
+                    var instancesToReimage = new List<string>();
+                    log.LogInformation("Removing App Payload Failed");
+                    foreach (var badVm in badInstances)
+                    {
+                        if (RecentPendingVMReimageOperations.ContainsKey(badVm))
+                        {
+                            // we have asked for this vm to be reimaged before, if it's more than 10 mins ago
+                            // then try again otherwise skip it
+                            if (DateTime.UtcNow - RecentPendingVMReimageOperations[badVm] < TimeSpan.FromMinutes(10))
+                            {
+                                log.LogInformation($"*** Instance {badVm} has recent delete request ({RecentPendingVMReimageOperations[badVm]}), skipping reimage");
+                            }
+                            else
+                            {
+                                // we should reimage it and update the timestamp
+                                instancesToReimage.Add(badVm);
+                            }
+                        }
+                        else
+                        {
+                            instancesToReimage.Add(badVm);
+                        }
+                    }
+                    foreach (var v in instancesToReimage)
+                    {
+                        RecentPendingVMReimageOperations[v] = DateTime.UtcNow;
+                    }
+                    if (instancesToReimage.Any())
+                    {
+                        allScaleSets.Inner.ReimageAsync(scaleSet.ResourceGroupName, scaleSet.Name, new Microsoft.Azure.Management.Compute.Fluent.Models.VirtualMachineScaleSetReimageParametersInner()
+                        {
+                            InstanceIds = instancesToReimage
+                        });
+                        return true;
+                    }
+                    else
+                    {
+                        return false;
+                    }
+                }
+                else
+                {
+                    log.LogInformation("No Running nodes detected to remove, likely because they are already deleting");
+                    return false;
+                }
+            }
+            catch (Exception e)
+            {
+                log.LogError(e, "Error Removing VMs " + e);
+                throw;
+            }
+        }
+
+        /// <summary>
         /// Removes VMSS instances based on the ip addresses reported by backend
         /// IP Address.
         /// </summary>

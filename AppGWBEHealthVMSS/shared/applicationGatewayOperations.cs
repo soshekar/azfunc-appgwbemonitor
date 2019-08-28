@@ -23,6 +23,52 @@ namespace AppGWBEHealthVMSS.shared
         /// <param name="scaleSet">Scale set.</param>
         /// <param name="minHealthyServers">Minimum healthy servers.</param>
         /// <param name="log">Log.</param>
+        public static bool CheckApplicationGatewayBEHealthAndReimageBadNodes(ApplicationGatewayBackendHealthInner appGw, IVirtualMachineScaleSet scaleSet, IVirtualMachineScaleSets allScaleSets, int minHealthyServers, ILogger log)
+        {
+            try
+            {
+                log.LogInformation("Enumerating Application Gateway Backend Servers");
+                var healthy = new List<ApplicationGatewayBackendHealthServer>();
+                var unhealthy = new List<ApplicationGatewayBackendHealthServer>();
+                foreach (var server in appGw.BackendAddressPools[0].BackendHttpSettingsCollection[0].Servers)
+                {
+                    if (server.Health.Value == "Healthy")
+                    {
+                        healthy.Add(server);
+                    }
+                    else
+                    {
+                        unhealthy.Add(server);
+                    }
+                }
+
+                List<string> appGwBadIps = new List<string>();
+
+                // If we have unhealthy nodes, then delete them
+                if (unhealthy.Count > 0)
+                {
+                    log.LogInformation("App Payload Failed node count = {0}, removing nodes", unhealthy.Count);
+                    return VmScaleSetOperations.ReplaceVMSSInstancesByIP(scaleSet, allScaleSets, unhealthy.Select(s => s.Address).ToList(), log);
+                }
+                return false;
+            }
+            catch (Exception e)
+            {
+                log.LogInformation("Error Message: " + e.Message);
+                log.LogInformation("HResult: " + e.HResult);
+                log.LogInformation("InnerException:" + e.InnerException);
+                return false;
+            }
+        }
+
+        /// <summary>
+        /// Checks the application gateway back end health metrics and deletes App Payload Failed nodes
+        /// </summary>
+        /// <returns><c>true</c>, if we deleted nodes, <c>false</c> otherwise.</returns>
+        /// <param name="appGw">App gateway</param>
+        /// <param name="scaleSet">Scale set.</param>
+        /// <param name="minHealthyServers">Minimum healthy servers.</param>
+        /// <param name="log">Log.</param>
         public static bool CheckApplicationGatewayBEHealthAndDeleteBadNodes(ApplicationGatewayBackendHealthInner appGw, IVirtualMachineScaleSet scaleSet, int minHealthyServers, ILogger log)
         {
             try

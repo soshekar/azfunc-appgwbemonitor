@@ -9,6 +9,7 @@ using Microsoft.Azure.Management.Network.Fluent;
 using System.Text;
 using System.Diagnostics;
 using System.Collections.Generic;
+using Microsoft.Azure.Management.Compute.Fluent.Models;
 
 namespace AppGWBEHealthVMSS
 {
@@ -94,7 +95,7 @@ namespace AppGWBEHealthVMSS
                 var azClient = AzureClient.CreateAzureClient(clientID, clientSecret, tenantID, azEnvironment, subscriptionID);
                 var scaleSet = azClient.VirtualMachineScaleSets.GetByResourceGroup(resourcegroupname, scaleSetName);
                 var appGw = azClient.ApplicationGateways.GetByResourceGroup(resourcegroupname, appGwName);
-
+                var allScaleSets = azClient.VirtualMachineScaleSets;
 
                 // We want to make sure that overprovisioning if OFF on the scaleset
                 // since we are creating and deleting vms very often it makes sense to 
@@ -115,7 +116,7 @@ namespace AppGWBEHealthVMSS
                 {
                     log.LogInformation($"Scaleset size BEFORE checking for App Payload Failed nodes is {scaleSet.Capacity}");
                     //// Remove any bad nodes first
-                    deletedNodes = ApplicationGatewayOperations.CheckApplicationGatewayBEHealthAndDeleteBadNodes(appGwBEHealth, scaleSet, minHealthyServers, log);
+                    deletedNodes = ApplicationGatewayOperations.CheckApplicationGatewayBEHealthAndReimageBadNodes(appGwBEHealth, scaleSet, allScaleSets, minHealthyServers, log);
                     log.LogInformation($"Scaleset size AFTER checking for App Payload Failed nodes is {scaleSet.Capacity}");
                 }
                 else
