@@ -41,11 +41,11 @@ namespace AppGWBEHealthVMSS.shared
             try
             {
                 // first a bit of cleanup, remove all super old pending delete info to prevent leakage
-                foreach (var k in RecentPendingVMDeleteOperations.Keys.ToList())
+                foreach (var k in RecentPendingVMReimageOperations.Keys.ToList())
                 {
-                    if (RecentPendingVMDeleteOperations[k] < DateTime.UtcNow - TimeSpan.FromMinutes(20))
+                    if (RecentPendingVMReimageOperations[k] < DateTime.UtcNow - TimeSpan.FromMinutes(20))
                     {
-                        log.LogInformation($"Cleaning up old pending delete info for vm {k}");
+                        log.LogInformation($"Cleaning up old pending reimage info for vm {k}");
                     }
                 }
                 log.LogInformation("Enumerating VM Instances in ScaleSet");
@@ -85,7 +85,7 @@ namespace AppGWBEHealthVMSS.shared
                             // then try again otherwise skip it
                             if (DateTime.UtcNow - RecentPendingVMReimageOperations[badVm] < TimeSpan.FromMinutes(10))
                             {
-                                log.LogInformation($"*** Instance {badVm} has recent delete request ({RecentPendingVMReimageOperations[badVm]}), skipping reimage");
+                                log.LogInformation($"*** Instance {badVm} has recent reimage request ({RecentPendingVMReimageOperations[badVm]}), skipping reimage");
                             }
                             else
                             {
@@ -117,13 +117,13 @@ namespace AppGWBEHealthVMSS.shared
                 }
                 else
                 {
-                    log.LogInformation("No Running nodes detected to remove, likely because they are already deleting");
+                    log.LogInformation("No Running nodes detected to reimage, likely because they are already deleting");
                     return false;
                 }
             }
             catch (Exception e)
             {
-                log.LogError(e, "Error Removing VMs " + e);
+                log.LogError(e, "Error reimaging VMs " + e);
                 throw;
             }
         }

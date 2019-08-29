@@ -47,7 +47,7 @@ namespace AppGWBEHealthVMSS.shared
                 // If we have unhealthy nodes, then delete them
                 if (unhealthy.Count > 0)
                 {
-                    log.LogInformation("App Payload Failed node count = {0}, removing nodes", unhealthy.Count);
+                    log.LogInformation("App Payload Failed node count = {0}, reimaging nodes", unhealthy.Count);
                     return VmScaleSetOperations.ReplaceVMSSInstancesByIP(scaleSet, allScaleSets, unhealthy.Select(s => s.Address).ToList(), log);
                 }
                 return false;
